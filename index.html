@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>保存できる植物図鑑マップ</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        #map { height: 100vh; width: 100%; }
+        body { margin: 0; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // --- 設定エリア (ここを書き換えて！) ---
+        const SUPABASE_URL = 'https://wvrzhcjjzwcanjyersit.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Bgu4CKgwP8DuK630PlQl8g_zYUXRiLk';
+        // ------------------------------------
+
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+        const map = L.map('map').setView([35.6812, 139.7671], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // 1. 保存されているデータを読み込む部分
+        async function loadPlants() {
+            const { data, error } = await supabaseClient.from('plants').select('*'); // ここを修正
+            if (data) {
+                data.forEach(plant => {
+                    L.marker([plant.lat, plant.lng]).addTo(map).bindPopup(plant.name);
+                });
+            }
+        }
+
+        // 2. 地図をクリックして保存する部分
+        map.on('click', async function(e) {
+            const name = prompt("植物の名前は何ですか？");
+            if (name) {
+                const { error } = await supabaseClient // ここを修正
+                    .from('plants')
+                    .insert([{ name: name, lat: e.latlng.lat, lng: e.latlng.lng }]);
+        
+                if (!error) {
+                    L.marker(e.latlng).addTo(map).bindPopup(name).openPopup();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
