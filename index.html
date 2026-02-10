@@ -11,29 +11,85 @@
         body { margin: 0; }
     </style>
 </head>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+
+    <style>
+        /* 右上のプラスボタン */
+        #add-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            width: 50px;
+            height: 50px;
+            background: #28a745;
+            color: white;
+            border-radius: 50%;
+            border: none;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        /* 入力フォームのモーダル（簡易版） */
+        #form-container {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            z-index: 2000;
+            border-radius: 10px;
+            width: 90%; max-width: 400px;
+        }
+    </style>
+
+    <button id="add-button">+</button>
+
+    <div id="form-container">
+        <h3>植物を登録</h3>
+        <input type="text" id="p-name" placeholder="名前">
+        <textarea id="p-desc" placeholder="説明"></textarea>
+        <input type="file" id="p-file" accept="image/*">
+        <p id="location-status" style="font-size: 12px; color: gray;"></p>
+        <button onclick="savePlant()">保存</button>
+        <button onclick="closeForm()">キャンセル</button>
+        </div>
 <body>
     <div id="map"></div>
 
     <script>
-        // --- 設定エリア (ここを書き換えて！) ---
+        // --- 設定エリア (データの保管場所、カギ) ---
         const SUPABASE_URL = 'https://wvrzhcjjzwcanjyersit.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_Bgu4CKgwP8DuK630PlQl8g_zYUXRiLk';
         // ------------------------------------
 
         const { createClient } = supabase;
         const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
-        const map = L.map('map').setView([35.6812, 139.7671], 13);
+        const map = L.map('map').setView([35.14258, 137.08703], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         // 1. 保存されているデータを読み込む部分
         async function loadPlants() {
-            const { data, error } = await supabaseClient.from('plants').select('*'); // ここを修正
-            if (data) {
+            console.log("読み込みを開始します..."); // 1. 動き出したか確認
+            const { data, error } = await supabaseClient.from('plants').select('*');
+            if (error) {
+                console.error("読み込みエラー発生:", error.message);
+                return;
+            }
+            console.log("取得したデータ:", data); // 2. ここでデータの中身をチェック！
+            if (data && data.length > 0) {
                 data.forEach(plant => {
-                    L.marker([plant.lat, plant.lng]).addTo(map).bindPopup(plant.name);
+                    console.log(plant.name + "を表示します", plant.lat, plant.lng);
+                    L.marker([plant.lat, plant.lng])
+                        .addTo(map)
+                        .bindPopup(plant.name);
                 });
+            } else {
+                console.log("データが0件、または空っぽです。"); // 3. データがない場合
             }
         }
+        loadPlants();
 
         // 2. 地図をクリックして保存する部分
         map.on('click', async function(e) {
@@ -48,6 +104,153 @@
                 }
             }
         });
+
+        let selectedCoords = null; // 選択された位置を一時保存する変数
+
+        // 1. プラスボタンを押した時の動き
+        document.getElementById('add-button').onclick = () => {
+            document.getElementById('form-container').style.display = 'block';
+            document.getElementById('location-status').innerText = "写真をえらぶか、地図をクリックしてね";
+        };
+
+        // フォームを閉じる
+        function closeForm() {
+            document.getElementById('form-container').style.display = 'none';
+            selectedCoords = null;
+        }
+
+        // 2. 写真が選択された時の処理（位置情報の解析）
+        document.getElementById('p-file').onchange = function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            EXIF.getData(file, function() {
+                const lat = EXIF.getTag(this, "GPSLatitude");
+                const lng = EXIF.getTag(this, "GPSLongitude");
+
+                if (lat && lng) {
+                    // 写真に位置情報があった場合（度分秒を十進法に変換）
+                    const toDecimal = (gps) => gps[0] + gps[1] / 60 + gps[2] / 3600;
+                    selectedCoords = { lat: toDecimal(lat), lng: toDecimal(lng) };
+                    document.getElementById('location-status').innerText = "📍 写真から位置を読み取りました！";
+                } else {
+                    // 位置情報がない場合
+                    selectedCoords = null;
+                    document.getElementById('location-status').innerText = "⚠️ 写真に位置情報がありません。地図上の場所を直接クリックしてください";
+            
+                    // 地図を一度だけクリック待ち状態にする
+                    map.once('click', (ev) => {
+                        selectedCoords = { lat: ev.latlng.lat, lng: ev.latlng.lng };
+                        document.getElementById('location-status').innerText = "📍 地図から位置を指定しました";
+                        // クリックした場所に一時的なマーカーを置くと分かりやすい
+                        L.marker(ev.latlng).addTo(map).bindPopup("ここに追加します").openPopup();
+                    });
+                }
+            });
+        };
+
+        // 3. 保存ボタンを押した時の処理
+        async function savePlant() {
+            const name = document.getElementById('p-name').value;
+            const desc = document.getElementById('p-desc').value;
+            const file = document.getElementById('p-file').files[0];
+
+            if (!name || !selectedCoords) {
+                alert("名前と位置情報が必要です！");
+                return;
+            }
+
+            let imageUrl = "";
+
+            // 写真があればSupabase Storageにアップロード
+            if (file) {
+                const fileName = `${Date.now()}_${file.name}`;
+                const { data, error: uploadError } = await supabaseClient.storage
+                    .from('plant-photos')
+                    .upload(fileName, file);
+
+                if (uploadError) {
+                    alert("写真のアップロードに失敗: " + uploadError.message);
+                    return;
+                }
+
+                // アップロードした写真の公開URLを取得
+                const { data: urlData } = supabaseClient.storage
+                    .from('plant-photos')
+                    .getPublicUrl(fileName);
+                imageUrl = urlData.publicUrl;
+            }
+
+            // データベースに保存
+            const { error: dbError } = await supabaseClient.from('plants').insert([{
+                name: name,
+                description: desc,
+                image_url: imageUrl,
+                lat: selectedCoords.lat,
+                lng: selectedCoords.lng
+            }]);
+
+            if (dbError) {
+                alert("保存エラー: " + dbError.message);
+            } else {
+                alert("保存しました！");
+                location.reload(); // 画面を更新してピンを表示
+            }
+        }
+
     </script>
+    // --- 読み込み機能のアップデート ---
+    async function loadPlants() {
+        const { data, error } = await supabaseClient.from('plants').select('*');
+        if (error) {
+            console.error("読み込みエラー:", error.message);
+            return;
+        }
+
+        if (data) {
+            data.forEach(plant => {
+                // ポップアップの中身を作成（写真があれば表示）
+                let popupContent = `<b>${plant.name}</b><br>${plant.description || '説明なし'}`;
+                if (plant.image_url) {
+                    popupContent += `<br><img src="${plant.image_url}" style="width:100%; max-width:200px; margin-top:5px;">`;
+                }
+
+                L.marker([plant.lat, plant.lng])
+                    .addTo(map)
+                    .bindPopup(popupContent);
+            });
+        }
+    }
+    loadPlants();
+
+    // --- 保存機能のアップデート（名前・説明・写真URL） ---
+    map.on('click', async function(e) {
+        const name = prompt("植物の名前は何ですか？");
+        if (!name) return;
+
+        const description = prompt("植物の説明を入力してください");
+        const imageUrl = prompt("写真のURLがあれば入力してください（空欄でもOK）");
+
+        // Supabaseに保存（descriptionとimage_urlも追加）
+        const { error } = await supabaseClient
+            .from('plants')
+            .insert([{ 
+                name: name, 
+                description: description,
+                image_url: imageUrl,
+               lat: e.latlng.lat, 
+                lng: e.latlng.lng 
+            }]);
+    
+        if (!error) {
+            let popupContent = `<b>${name}</b><br>${description || ''}`;
+            if (imageUrl) {
+                popupContent += `<br><img src="${imageUrl}" style="width:200px;">`;
+            }
+            L.marker(e.latlng).addTo(map).bindPopup(popupContent).openPopup();
+        } else {
+            alert("保存に失敗しました: " + error.message);
+        }
+    });
 </body>
 </html>
