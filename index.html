@@ -2,255 +2,288 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>保存できる植物図鑑マップ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>植物図鑑マップ Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
     <style>
-        #map { height: 100vh; width: 100%; }
-        body { margin: 0; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+        #map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+
+        /* 🔍 検索ボタンを右端へ */
+        #search-trigger {
+            position: fixed; top: 20px; right: 20px; z-index: 1001;
+            width: 50px; height: 50px; background: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        /* 検索パネル */
+        #controls {
+            display: none; position: fixed; top: 80px; right: 20px; z-index: 1001;
+            background: white; padding: 15px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 260px;
+        }
+
+        #add-button {
+            position: fixed; bottom: 30px; right: 20px; z-index: 1001;
+            width: 65px; height: 65px; background: #28a745; color: white;
+            border-radius: 50%; border: none; font-size: 40px; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .photo-pin {
+            width: 50px; height: 50px; border-radius: 50%; border: 4px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4); background-size: cover; background-position: center;
+        }
+
+        /* 登録フォーム */
+        #form-container {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 25px; z-index: 2000; border-radius: 20px;
+            width: 85%; max-width: 350px; box-shadow: 0 0 40px rgba(0,0,0,0.6);
+            max-height: 90vh; overflow-y: auto;
+        }
+
+        input, textarea, select { 
+            width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; 
+            border-radius: 8px; box-sizing: border-box; font-size: 16px; background-color: white;
+            appearance: none; -webkit-appearance: none;
+        }
+
+        /* 日付入力欄の縦長・レイアウト崩れ対策 */
+        input[type="date"] {
+            position: relative;
+            min-height: 48px;
+        }
+        input[type="date"]::before {
+            content: "(日付)";
+            position: absolute;
+            left: 12px;
+            color: #999;
+            white-space: nowrap; /* 縦長防止 */
+            pointer-events: none;
+        }
+        input[type="date"]:focus::before,
+        input[type="date"]:not(:invalid)::before {
+            content: "";
+        }
+
+        .save-btn { width: 100%; background: #28a745; color: white; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .save-btn:disabled { background: #ccc; }
+        #image-preview { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; display: none; margin-bottom: 10px; }
     </style>
 </head>
-    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
-
-    <style>
-        /* 右上のプラスボタン */
-        #add-button {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            width: 50px;
-            height: 50px;
-            background: #28a745;
-            color: white;
-            border-radius: 50%;
-            border: none;
-            font-size: 30px;
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
-        /* 入力フォームのモーダル（簡易版） */
-        #form-container {
-            display: none;
-            position: fixed;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            z-index: 2000;
-            border-radius: 10px;
-            width: 90%; max-width: 400px;
-        }
-    </style>
-
-    <button id="add-button">+</button>
-
-    <div id="form-container">
-        <h3>植物を登録</h3>
-        <input type="text" id="p-name" placeholder="名前">
-        <textarea id="p-desc" placeholder="説明"></textarea>
-        <input type="file" id="p-file" accept="image/*">
-        <p id="location-status" style="font-size: 12px; color: gray;"></p>
-        <button onclick="savePlant()">保存</button>
-        <button onclick="closeForm()">キャンセル</button>
-        </div>
 <body>
-    <div id="map"></div>
 
-    <script>
-        // --- 設定エリア (データの保管場所、カギ) ---
-        const SUPABASE_URL = 'https://wvrzhcjjzwcanjyersit.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_Bgu4CKgwP8DuK630PlQl8g_zYUXRiLk';
-        // ------------------------------------
+<div id="map"></div>
+<div id="search-trigger" onclick="toggleSearch()">🔍</div>
 
-        const { createClient } = supabase;
-        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
-        const map = L.map('map').setView([35.14258, 137.08703], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+<div id="controls">
+    <input type="text" id="search-input" placeholder="名前で検索..." oninput="updateDisplay()">
+    <select id="filter-family" onchange="updateDisplay()">
+        <option value="all">すべての科</option>
+        <option value="アブラナ科">アブラナ科</option>
+        <option value="キク科">キク科</option>
+        <option value="バラ科">バラ科</option>
+        <option value="ナス科">ナス科</option>
+        <option value="マメ科">マメ科</option>
+        <option value="その他">その他</option>
+    </select>
+</div>
 
-        // 1. 保存されているデータを読み込む部分
-        async function loadPlants() {
-            console.log("読み込みを開始します..."); // 1. 動き出したか確認
-            const { data, error } = await supabaseClient.from('plants').select('*');
-            if (error) {
-                console.error("読み込みエラー発生:", error.message);
-                return;
-            }
-            console.log("取得したデータ:", data); // 2. ここでデータの中身をチェック！
-            if (data && data.length > 0) {
-                data.forEach(plant => {
-                    console.log(plant.name + "を表示します", plant.lat, plant.lng);
-                    L.marker([plant.lat, plant.lng])
-                        .addTo(map)
-                        .bindPopup(plant.name);
-                });
-            } else {
-                console.log("データが0件、または空っぽです。"); // 3. データがない場合
-            }
-        }
-        loadPlants();
+<button id="add-button">+</button>
 
-        // 2. 地図をクリックして保存する部分
-        map.on('click', async function(e) {
-            const name = prompt("植物の名前は何ですか？");
-            if (name) {
-                const { error } = await supabaseClient // ここを修正
-                    .from('plants')
-                    .insert([{ name: name, lat: e.latlng.lat, lng: e.latlng.lng }]);
-        
-                if (!error) {
-                    L.marker(e.latlng).addTo(map).bindPopup(name).openPopup();
-                }
+<div id="form-container">
+    <h3 style="margin:0 0 15px; color:#28a745;">🌱 植物を登録</h3>
+    <img id="image-preview">
+    <input type="file" id="p-file" accept="image/*">
+    <input type="text" id="p-name" placeholder="植物の名前">
+    <input type="date" id="p-date" required>
+    <select id="p-family">
+        <option value="未分類">科を選択</option>
+        <option value="アブラナ科">アブラナ科</option>
+        <option value="キク科">キク科</option>
+        <option value="バラ科">バラ科</option>
+        <option value="ナス科">ナス科</option>
+        <option value="マメ科">マメ科</option>
+        <option value="その他">その他</option>
+    </select>
+    <textarea id="p-desc" placeholder="説明文" rows="3"></textarea>
+    <div id="location-status" style="font-size:12px; color:gray; margin-bottom:10px;">日付と場所は写真から自動取得します</div>
+    <button id="submit-btn" class="save-btn" onclick="savePlant()">保存する</button>
+    <button onclick="closeForm()" style="width:100%; margin-top:10px; border:none; background:none; color:#999;">キャンセル</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+
+<script>
+    const SUPABASE_URL = 'https://wvrzhcjjzwcanjyersit.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Bgu4CKgwP8DuK630PlQl8g_zYUXRiLk';
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const map = L.map('map').setView([35.6812, 139.7671], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const markers = L.markerClusterGroup({ disableClusteringAtZoom: 17, minimumClusterSize: 1 });
+    let allPlantsData = [];
+
+    function toggleSearch() {
+        const ctrl = document.getElementById('controls');
+        ctrl.style.display = (ctrl.style.display === 'block') ? 'none' : 'block';
+    }
+
+    function getSeasonColor(dateStr) {
+        if (!dateStr) return "white";
+        const month = new Date(dateStr).getMonth() + 1;
+        if (month >= 3 && month <= 5) return "#ffb7c5";
+        if (month >= 6 && month <= 8) return "#4caf50";
+        if (month >= 9 && month <= 11) return "#ff9800";
+        return "#2196f3";
+    }
+
+    async function loadPlants() {
+        const { data, error } = await supabaseClient.from('plants').select('*');
+        if (error) return console.error(error);
+        allPlantsData = data;
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        const searchText = document.getElementById('search-input').value.toLowerCase();
+        const selectedFamily = document.getElementById('filter-family').value;
+        markers.clearLayers();
+
+        allPlantsData.forEach(plant => {
+            if (plant.name.toLowerCase().includes(searchText) && (selectedFamily === 'all' || plant.family === selectedFamily)) {
+                const borderColor = getSeasonColor(plant.created_at);
+                const iconHtml = `<div class="photo-pin" style="background-image: url('${plant.image_url}'); border-color: ${borderColor};"></div>`;
+                const photoIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [50, 50], iconAnchor: [25, 25] });
+                
+                const marker = L.marker([plant.lat, plant.lng], { icon: photoIcon })
+                    .bindPopup(`<div style="text-align:center; width:200px;"><img src="${plant.image_url}" style="width:100%; border-radius:10px;"><h3>${plant.name}</h3><p style="font-size:12px; color:gray;">撮影日: ${plant.created_at ? plant.created_at.split('T')[0] : '不明'}</p><p>${plant.description || ''}</p></div>`);
+                markers.addLayer(marker);
             }
         });
+        map.addLayer(markers);
+    }
 
-        let selectedCoords = null; // 選択された位置を一時保存する変数
+    async function resizeImage(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 800;
+                    let w = img.width, h = img.height;
+                    if (w > MAX) { h *= MAX/w; w = MAX; }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
+                };
+            };
+        });
+    }
 
-        // 1. プラスボタンを押した時の動き
-        document.getElementById('add-button').onclick = () => {
-            document.getElementById('form-container').style.display = 'block';
-            document.getElementById('location-status').innerText = "写真をえらぶか、地図をクリックしてね";
+    let selectedCoords = null;
+    document.getElementById('add-button').onclick = () => document.getElementById('form-container').style.display = 'block';
+    function closeForm() { 
+        document.getElementById('form-container').style.display = 'none'; 
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('submit-btn').innerText = "保存する";
+    }
+
+    document.getElementById('p-file').onchange = async function(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (re) => { 
+            const prev = document.getElementById('image-preview');
+            prev.src = re.target.result; prev.style.display = 'block';
         };
+        reader.readAsDataURL(file);
 
-        // フォームを閉じる
-        function closeForm() {
-            document.getElementById('form-container').style.display = 'none';
-            selectedCoords = null;
-        }
-
-        // 2. 写真が選択された時の処理（位置情報の解析）
-        document.getElementById('p-file').onchange = function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            EXIF.getData(file, function() {
-                const lat = EXIF.getTag(this, "GPSLatitude");
-                const lng = EXIF.getTag(this, "GPSLongitude");
-
-                if (lat && lng) {
-                    // 写真に位置情報があった場合（度分秒を十進法に変換）
-                    const toDecimal = (gps) => gps[0] + gps[1] / 60 + gps[2] / 3600;
-                    selectedCoords = { lat: toDecimal(lat), lng: toDecimal(lng) };
-                    document.getElementById('location-status').innerText = "📍 写真から位置を読み取りました！";
-                } else {
-                    // 位置情報がない場合
-                    selectedCoords = null;
-                    document.getElementById('location-status').innerText = "⚠️ 写真に位置情報がありません。地図上の場所を直接クリックしてください";
-            
-                    // 地図を一度だけクリック待ち状態にする
-                    map.once('click', (ev) => {
-                        selectedCoords = { lat: ev.latlng.lat, lng: ev.latlng.lng };
-                        document.getElementById('location-status').innerText = "📍 地図から位置を指定しました";
-                        // クリックした場所に一時的なマーカーを置くと分かりやすい
-                        L.marker(ev.latlng).addTo(map).bindPopup("ここに追加します").openPopup();
-                    });
-                }
-            });
-        };
-
-        // 3. 保存ボタンを押した時の処理
-        async function savePlant() {
-            const name = document.getElementById('p-name').value;
-            const desc = document.getElementById('p-desc').value;
-            const file = document.getElementById('p-file').files[0];
-
-            if (!name || !selectedCoords) {
-                alert("名前と位置情報が必要です！");
-                return;
+        EXIF.getData(file, function() {
+            const exifDate = EXIF.getTag(this, "DateTimeOriginal");
+            if (exifDate) {
+                const parts = exifDate.split(" ")[0].split(":");
+                document.getElementById('p-date').value = `${parts[0]}-${parts[1]}-${parts[2]}`;
             }
-
-            let imageUrl = "";
-
-            // 写真があればSupabase Storageにアップロード
-            if (file) {
-                const fileName = `${Date.now()}_${file.name}`;
-                const { data, error: uploadError } = await supabaseClient.storage
-                    .from('plant-photos')
-                    .upload(fileName, file);
-
-                if (uploadError) {
-                    alert("写真のアップロードに失敗: " + uploadError.message);
-                    return;
-                }
-
-                // アップロードした写真の公開URLを取得
-                const { data: urlData } = supabaseClient.storage
-                    .from('plant-photos')
-                    .getPublicUrl(fileName);
-                imageUrl = urlData.publicUrl;
+            const lat = EXIF.getTag(this, "GPSLatitude"), lng = EXIF.getTag(this, "GPSLongitude");
+            if (lat && lng) {
+                const toDec = (d) => d[0] + d[1]/60 + d[2]/3600;
+                selectedCoords = { lat: toDec(lat), lng: toDec(lng) };
+                document.getElementById('location-status').innerText = "📍 写真から位置取得OK";
+            } else {
+                document.getElementById('location-status').innerText = "📍 地図をタップして場所を指定してね";
+                map.once('click', (ev) => {
+                    selectedCoords = { lat: ev.latlng.lat, lng: ev.latlng.lng };
+                    document.getElementById('location-status').innerText = "📍 場所を指定しました";
+                });
             }
+        });
+    };
 
-            // データベースに保存
-            const { error: dbError } = await supabaseClient.from('plants').insert([{
+    async function savePlant() {
+        const name = document.getElementById('p-name').value;
+        const family = document.getElementById('p-family').value;
+        const date = document.getElementById('p-date').value;
+        const desc = document.getElementById('p-desc').value;
+        const file = document.getElementById('p-file').files[0];
+        
+        if (!name || !selectedCoords || !file) return alert("名前、写真、位置が必要です");
+
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerText = "保存中...";
+
+        try {
+            const resizedBlob = await resizeImage(file);
+            const fileName = `${Date.now()}.jpg`;
+            const { error: upError } = await supabaseClient.storage.from('plant-photos').upload(fileName, resizedBlob);
+            if (upError) throw upError;
+
+            const { data: urlData } = supabaseClient.storage.from('plant-photos').getPublicUrl(fileName);
+            const imageUrl = urlData.publicUrl;
+
+            // スキーマキャッシュエラー対策：オブジェクトを動的に作成
+            const insertData = {
                 name: name,
+                family: family,
                 description: desc,
                 image_url: imageUrl,
                 lat: selectedCoords.lat,
                 lng: selectedCoords.lng
-            }]);
-
-            if (dbError) {
-                alert("保存エラー: " + dbError.message);
-            } else {
-                alert("保存しました！");
-                location.reload(); // 画面を更新してピンを表示
+            };
+            
+            // 日付がある場合のみ追加（ISO形式へ変換）
+            if (date) {
+                insertData.created_at = new Date(date).toISOString();
             }
-        }
 
-    </script>
-    // --- 読み込み機能のアップデート ---
-    async function loadPlants() {
-        const { data, error } = await supabaseClient.from('plants').select('*');
-        if (error) {
-            console.error("読み込みエラー:", error.message);
-            return;
-        }
+            const { error: dbError } = await supabaseClient.from('plants').insert([insertData]);
+            if (dbError) throw dbError;
 
-        if (data) {
-            data.forEach(plant => {
-                // ポップアップの中身を作成（写真があれば表示）
-                let popupContent = `<b>${plant.name}</b><br>${plant.description || '説明なし'}`;
-                if (plant.image_url) {
-                    popupContent += `<br><img src="${plant.image_url}" style="width:100%; max-width:200px; margin-top:5px;">`;
-                }
-
-                L.marker([plant.lat, plant.lng])
-                    .addTo(map)
-                    .bindPopup(popupContent);
-            });
+            await loadPlants();
+            closeForm();
+            alert("保存しました！");
+        } catch (err) {
+            alert("エラーが発生しました: " + err.message);
+            btn.disabled = false;
+            btn.innerText = "保存する";
         }
     }
     loadPlants();
-
-    // --- 保存機能のアップデート（名前・説明・写真URL） ---
-    map.on('click', async function(e) {
-        const name = prompt("植物の名前は何ですか？");
-        if (!name) return;
-
-        const description = prompt("植物の説明を入力してください");
-        const imageUrl = prompt("写真のURLがあれば入力してください（空欄でもOK）");
-
-        // Supabaseに保存（descriptionとimage_urlも追加）
-        const { error } = await supabaseClient
-            .from('plants')
-            .insert([{ 
-                name: name, 
-                description: description,
-                image_url: imageUrl,
-               lat: e.latlng.lat, 
-                lng: e.latlng.lng 
-            }]);
-    
-        if (!error) {
-            let popupContent = `<b>${name}</b><br>${description || ''}`;
-            if (imageUrl) {
-                popupContent += `<br><img src="${imageUrl}" style="width:200px;">`;
-            }
-            L.marker(e.latlng).addTo(map).bindPopup(popupContent).openPopup();
-        } else {
-            alert("保存に失敗しました: " + error.message);
-        }
-    });
+</script>
 </body>
 </html>
