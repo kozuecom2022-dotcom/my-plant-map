@@ -3,15 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>植物図鑑マップ Pro (名古屋版)</title>
+    <title>植物図鑑マップ Pro</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    
     <style>
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
         #map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* 🔍 検索ボタン */
         #search-trigger { position: fixed; top: 20px; right: 20px; z-index: 1001; width: 50px; height: 50px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
         #controls { display: none; position: fixed; top: 80px; right: 20px; z-index: 1001; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 260px; }
+        
+        /* ➕ 追加ボタン */
         #add-button { position: fixed; bottom: 30px; right: 20px; z-index: 1001; width: 65px; height: 65px; background: #28a745; color: white; border-radius: 50%; border: none; font-size: 40px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+
+        /* 🖼️ 写真ピン */
         .photo-pin { width: 50px; height: 50px; border-radius: 50%; border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); background-size: cover; background-position: center; }
+
+        /* 🟢 重なった時の「×数」デザイン */
+        .custom-cluster {
+            background: #28a745; border: 2px solid white; border-radius: 50%;
+            color: white; font-weight: bold; display: flex; align-items: center;
+            justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 16px;
+        }
+
+        /* 📋 登録フォーム */
         #form-container { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; z-index: 2000; border-radius: 20px; width: 85%; max-width: 350px; box-shadow: 0 0 40px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; }
         input, textarea, select { width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; background-color: white; }
         input[type="date"] { position: relative; min-height: 48px; }
@@ -51,6 +68,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
 
@@ -60,12 +78,25 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ★地図の初期位置を名古屋に設定
+    // 名古屋駅中心に設定
     const map = L.map('map').setView([35.1709, 136.8815], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // ★クラスターを廃止し、通常のレイヤーグループに変更（常に写真を表示するため）
-    const markerLayer = L.layerGroup().addTo(map);
+    // ★重なった時だけ「×数」を表示する設定
+    const markers = L.markerClusterGroup({
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        maxClusterRadius: 20, // 小さくすることで、かなり重ならない限り写真を表示する
+        iconCreateFunction: function(cluster) {
+            return L.divIcon({
+                html: '×' + cluster.getChildCount(),
+                className: 'custom-cluster',
+                iconSize: L.point(40, 40)
+            });
+        }
+    });
+    map.addLayer(markers);
+
     let allPlantsData = [];
 
     function toggleSearch() {
@@ -92,7 +123,8 @@
     function updateDisplay() {
         const searchText = document.getElementById('search-input').value.toLowerCase();
         const selectedFamily = document.getElementById('filter-family').value;
-        markerLayer.clearLayers();
+        
+        markers.clearLayers();
 
         allPlantsData.forEach(plant => {
             if (plant.name.toLowerCase().includes(searchText) && (selectedFamily === 'all' || plant.family === selectedFamily)) {
@@ -100,14 +132,14 @@
                 const iconHtml = `<div class="photo-pin" style="background-image: url('${plant.image_url}'); border-color: ${borderColor};"></div>`;
                 const photoIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [50, 50], iconAnchor: [25, 25] });
                 
-                L.marker([plant.lat, plant.lng], { icon: photoIcon })
-                    .bindPopup(`<div style="text-align:center; width:200px;"><img src="${plant.image_url}" style="width:100%; border-radius:10px;"><h3>${plant.name}</h3><p style="font-size:12px; color:gray;">撮影日: ${plant.created_at ? plant.created_at.split('T')[0] : '不明'}</p><p>${plant.description || ''}</p></div>`)
-                    .addTo(markerLayer);
+                const marker = L.marker([plant.lat, plant.lng], { icon: photoIcon })
+                    .bindPopup(`<div style="text-align:center; width:220px;"><img src="${plant.image_url}" style="width:100%; border-radius:10px;"><h3>${plant.name}</h3><p style="font-size:12px; color:gray;">撮影日: ${plant.created_at ? plant.created_at.split('T')[0] : '不明'}</p><p>${plant.description || ''}</p></div>`);
+                
+                markers.addLayer(marker);
             }
         });
     }
 
-    // --- フォームを空にする関数 ---
     function resetForm() {
         document.getElementById('p-name').value = "";
         document.getElementById('p-family').value = "未分類";
@@ -122,10 +154,9 @@
 
     function closeForm() { 
         document.getElementById('form-container').style.display = 'none'; 
-        resetForm(); // 閉じる時も中身を消す
+        resetForm();
     }
 
-    // --- 画像リサイズと保存はそのまま ---
     async function resizeImage(file) {
         return new Promise((resolve) => {
             const reader = new FileReader();
@@ -203,7 +234,7 @@
 
             await supabaseClient.from('plants').insert([insertData]);
             await loadPlants();
-            closeForm(); // ここでresetFormも呼ばれる
+            closeForm();
             alert("保存しました！");
         } catch (err) {
             alert("エラー: " + err.message);
