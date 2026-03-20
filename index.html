@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>植物図鑑マップ Pro</title>
+    <title>名古屋植物図鑑 Pro Max</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     
@@ -11,31 +11,29 @@
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
         #map { width: 100%; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        /* 🔍 検索ボタン */
+        /* 🔍 検索パネル */
         #search-trigger { position: fixed; top: 20px; right: 20px; z-index: 1001; width: 50px; height: 50px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
         #controls { display: none; position: fixed; top: 80px; right: 20px; z-index: 1001; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 260px; }
         
+        /* 📍 現在地ボタン */
+        #locate-btn { position: fixed; bottom: 110px; right: 20px; z-index: 1001; width: 50px; height: 50px; background: white; border-radius: 50%; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3); color: #007bff; }
+
         /* ➕ 追加ボタン */
         #add-button { position: fixed; bottom: 30px; right: 20px; z-index: 1001; width: 65px; height: 65px; background: #28a745; color: white; border-radius: 50%; border: none; font-size: 40px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
 
         /* 🖼️ 写真ピン */
         .photo-pin { width: 50px; height: 50px; border-radius: 50%; border: 4px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); background-size: cover; background-position: center; }
 
-        /* 🟢 重なった時の「×数」デザイン */
-        .custom-cluster {
-            background: #28a745; border: 2px solid white; border-radius: 50%;
-            color: white; font-weight: bold; display: flex; align-items: center;
-            justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 16px;
-        }
+        /* 🟢 クラスターデザイン */
+        .custom-cluster { background: #28a745; border: 2px solid white; border-radius: 50%; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 16px; }
 
         /* 📋 登録フォーム */
         #form-container { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; z-index: 2000; border-radius: 20px; width: 85%; max-width: 350px; box-shadow: 0 0 40px rgba(0,0,0,0.6); max-height: 90vh; overflow-y: auto; }
-        input, textarea, select { width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; background-color: white; }
-        input[type="date"] { position: relative; min-height: 48px; }
-        input[type="date"]::before { content: "(日付)"; position: absolute; left: 12px; color: #999; white-space: nowrap; pointer-events: none; }
-        input[type="date"]:focus::before, input[type="date"]:not(:invalid)::before { content: ""; }
+        input, textarea, select { width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
         .save-btn { width: 100%; background: #28a745; color: white; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
         #image-preview { width: 100%; height: 150px; object-fit: cover; border-radius: 10px; display: none; margin-bottom: 10px; }
+        
+        .wiki-link { color: #28a745; text-decoration: underline; cursor: pointer; font-size: 18px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -44,11 +42,20 @@
 <div id="search-trigger" onclick="toggleSearch()">🔍</div>
 <div id="controls">
     <input type="text" id="search-input" placeholder="名前で検索..." oninput="updateDisplay()">
+    <select id="filter-season" onchange="updateDisplay()">
+        <option value="all">すべての季節</option>
+        <option value="spring">春 (3-5月)</option>
+        <option value="summer">夏 (6-8月)</option>
+        <option value="autumn">秋 (9-11月)</option>
+        <option value="winter">冬 (12-2月)</option>
+    </select>
     <select id="filter-family" onchange="updateDisplay()">
         <option value="all">すべての科</option>
         <option value="アブラナ科">アブラナ科</option><option value="キク科">キク科</option><option value="バラ科">バラ科</option><option value="ナス科">ナス科</option><option value="マメ科">マメ科</option><option value="その他">その他</option>
     </select>
 </div>
+
+<button id="locate-btn" onclick="jumpToCurrentLocation()">🎯</button>
 <button id="add-button">+</button>
 
 <div id="form-container">
@@ -56,13 +63,13 @@
     <img id="image-preview">
     <input type="file" id="p-file" accept="image/*">
     <input type="text" id="p-name" placeholder="植物の名前">
-    <input type="date" id="p-date" required>
+    <input type="date" id="p-date">
     <select id="p-family">
         <option value="未分類">科を選択</option>
         <option value="アブラナ科">アブラナ科</option><option value="キク科">キク科</option><option value="バラ科">バラ科</option><option value="ナス科">ナス科</option><option value="マメ科">マメ科</option><option value="その他">その他</option>
     </select>
     <textarea id="p-desc" placeholder="説明文" rows="3"></textarea>
-    <div id="location-status" style="font-size:12px; color:gray; margin-bottom:10px;">日付と場所は写真から自動取得します</div>
+    <div id="location-status" style="font-size:12px; color:gray; margin-bottom:10px;">位置情報を取得中...</div>
     <button id="submit-btn" class="save-btn" onclick="savePlant()">保存する</button>
     <button onclick="closeForm()" style="width:100%; margin-top:10px; border:none; background:none; color:#999;">キャンセル</button>
 </div>
@@ -78,135 +85,132 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // 名古屋駅中心に設定
     const map = L.map('map').setView([35.1709, 136.8815], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // ★重なった時だけ「×数」を表示する設定
     const markers = L.markerClusterGroup({
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        maxClusterRadius: 20, // 小さくすることで、かなり重ならない限り写真を表示する
-        iconCreateFunction: function(cluster) {
-            return L.divIcon({
-                html: '×' + cluster.getChildCount(),
-                className: 'custom-cluster',
-                iconSize: L.point(40, 40)
-            });
-        }
+        maxClusterRadius: 20,
+        iconCreateFunction: (cluster) => L.divIcon({ html: '×' + cluster.getChildCount(), className: 'custom-cluster', iconSize: L.point(40, 40) })
     });
     map.addLayer(markers);
 
     let allPlantsData = [];
+    let currentPosition = null;
+
+    // 現在地を取得し続ける
+    navigator.geolocation.watchPosition(pos => {
+        currentPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    });
+
+    function jumpToCurrentLocation() {
+        if (currentPosition) {
+            map.flyTo([currentPosition.lat, currentPosition.lng], 16);
+        } else {
+            alert("現在地を取得できません");
+        }
+    }
 
     function toggleSearch() {
         const ctrl = document.getElementById('controls');
         ctrl.style.display = (ctrl.style.display === 'block') ? 'none' : 'block';
     }
 
-    function getSeasonColor(dateStr) {
-        if (!dateStr) return "white";
+    // 季節判定用
+    function getSeason(dateStr) {
+        if (!dateStr) return "winter";
         const month = new Date(dateStr).getMonth() + 1;
-        if (month >= 3 && month <= 5) return "#ffb7c5";
-        if (month >= 6 && month <= 8) return "#4caf50";
-        if (month >= 9 && month <= 11) return "#ff9800";
+        if (month >= 3 && month <= 5) return "spring";
+        if (month >= 6 && month <= 8) return "summer";
+        if (month >= 9 && month <= 11) return "autumn";
+        return "winter";
+    }
+
+    function getSeasonColor(dateStr) {
+        const s = getSeason(dateStr);
+        if (s === "spring") return "#ffb7c5";
+        if (s === "summer") return "#4caf50";
+        if (s === "autumn") return "#ff9800";
         return "#2196f3";
     }
 
     async function loadPlants() {
         const { data, error } = await supabaseClient.from('plants').select('*');
-        if (error) return console.error(error);
-        allPlantsData = data;
-        updateDisplay();
+        if (!error) { allPlantsData = data; updateDisplay(); }
     }
 
     function updateDisplay() {
         const searchText = document.getElementById('search-input').value.toLowerCase();
         const selectedFamily = document.getElementById('filter-family').value;
+        const selectedSeason = document.getElementById('filter-season').value;
         
         markers.clearLayers();
 
         allPlantsData.forEach(plant => {
-            if (plant.name.toLowerCase().includes(searchText) && (selectedFamily === 'all' || plant.family === selectedFamily)) {
+            const season = getSeason(plant.created_at);
+            const matchesSearch = plant.name.toLowerCase().includes(searchText);
+            const matchesFamily = (selectedFamily === 'all' || plant.family === selectedFamily);
+            const matchesSeason = (selectedSeason === 'all' || season === selectedSeason);
+
+            if (matchesSearch && matchesFamily && matchesSeason) {
                 const borderColor = getSeasonColor(plant.created_at);
-                const iconHtml = `<div class="photo-pin" style="background-image: url('${plant.image_url}'); border-color: ${borderColor};"></div>`;
-                const photoIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [50, 50], iconAnchor: [25, 25] });
+                const photoIcon = L.divIcon({ 
+                    html: `<div class="photo-pin" style="background-image: url('${plant.image_url}'); border-color: ${borderColor};"></div>`, 
+                    className: '', iconSize: [50, 50], iconAnchor: [25, 25] 
+                });
                 
+                // Wikipediaリンク付きポップアップ
+                const wikiUrl = `https://ja.wikipedia.org/wiki/${encodeURIComponent(plant.name)}`;
                 const marker = L.marker([plant.lat, plant.lng], { icon: photoIcon })
-                    .bindPopup(`<div style="text-align:center; width:220px;"><img src="${plant.image_url}" style="width:100%; border-radius:10px;"><h3>${plant.name}</h3><p style="font-size:12px; color:gray;">撮影日: ${plant.created_at ? plant.created_at.split('T')[0] : '不明'}</p><p>${plant.description || ''}</p></div>`);
-                
+                    .bindPopup(`
+                        <div style="text-align:center; width:220px;">
+                            <img src="${plant.image_url}" style="width:100%; border-radius:10px;">
+                            <div class="wiki-link" onclick="window.open('${wikiUrl}', '_blank')">${plant.name} 🔗</div>
+                            <p style="font-size:12px; color:gray;">撮影日: ${plant.created_at ? plant.created_at.split('T')[0] : '不明'}</p>
+                            <p>${plant.description || ''}</p>
+                        </div>
+                    `);
                 markers.addLayer(marker);
             }
         });
     }
 
-    function resetForm() {
-        document.getElementById('p-name').value = "";
-        document.getElementById('p-family').value = "未分類";
-        document.getElementById('p-date').value = "";
-        document.getElementById('p-desc').value = "";
-        document.getElementById('p-file').value = "";
-        document.getElementById('image-preview').style.display = 'none';
-        document.getElementById('image-preview').src = "";
-        document.getElementById('location-status').innerText = "日付と場所は写真から自動取得します";
-        selectedCoords = null;
-    }
-
-    function closeForm() { 
-        document.getElementById('form-container').style.display = 'none'; 
-        resetForm();
-    }
-
-    async function resizeImage(file) {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX = 800;
-                    let w = img.width, h = img.height;
-                    if (w > MAX) { h *= MAX/w; w = MAX; }
-                    canvas.width = w; canvas.height = h;
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.7);
-                };
-            };
-        });
-    }
-
     let selectedCoords = null;
-    document.getElementById('add-button').onclick = () => document.getElementById('form-container').style.display = 'block';
+    document.getElementById('add-button').onclick = () => {
+        document.getElementById('form-container').style.display = 'block';
+        // フォームを開いた時点で現在地があればセットしておく（バックアップ用）
+        if (currentPosition) {
+            selectedCoords = currentPosition;
+            document.getElementById('location-status').innerText = "📍 現在地をセットしました";
+        }
+    };
 
-    document.getElementById('p-file').onchange = async function(e) {
+    document.getElementById('p-file').onchange = function(e) {
         const file = e.target.files[0];
         if(!file) return;
-        const reader = new FileReader();
-        reader.onload = (re) => { 
-            const prev = document.getElementById('image-preview');
-            prev.src = re.target.result; prev.style.display = 'block';
-        };
-        reader.readAsDataURL(file);
+        
+        const prev = document.getElementById('image-preview');
+        prev.src = URL.createObjectURL(file);
+        prev.style.display = 'block';
 
         EXIF.getData(file, function() {
+            // 日付の取得
             const exifDate = EXIF.getTag(this, "DateTimeOriginal");
             if (exifDate) {
                 const parts = exifDate.split(" ")[0].split(":");
                 document.getElementById('p-date').value = `${parts[0]}-${parts[1]}-${parts[2]}`;
             }
+
+            // 位置情報の取得
             const lat = EXIF.getTag(this, "GPSLatitude"), lng = EXIF.getTag(this, "GPSLongitude");
             if (lat && lng) {
                 const toDec = (d) => d[0] + d[1]/60 + d[2]/3600;
                 selectedCoords = { lat: toDec(lat), lng: toDec(lng) };
-                document.getElementById('location-status').innerText = "📍 位置取得OK";
+                document.getElementById('location-status').innerText = "📸 写真の位置情報を使用";
+            } else if (currentPosition) {
+                selectedCoords = currentPosition;
+                document.getElementById('location-status').innerText = "📍 写真に位置がないため現在地を使用";
             } else {
-                document.getElementById('location-status').innerText = "📍 地図をタップして場所を指定してね";
-                map.once('click', (ev) => {
-                    selectedCoords = { lat: ev.latlng.lat, lng: ev.latlng.lng };
-                    document.getElementById('location-status').innerText = "📍 場所を指定しました";
-                });
+                document.getElementById('location-status').innerText = "⚠️ 位置情報が取得できません";
             }
         });
     };
@@ -224,9 +228,8 @@
         btn.disabled = true; btn.innerText = "保存中...";
 
         try {
-            const resizedBlob = await resizeImage(file);
             const fileName = `${Date.now()}.jpg`;
-            await supabaseClient.storage.from('plant-photos').upload(fileName, resizedBlob);
+            await supabaseClient.storage.from('plant-photos').upload(fileName, file);
             const { data: urlData } = supabaseClient.storage.from('plant-photos').getPublicUrl(fileName);
 
             const insertData = { name, family, description: desc, image_url: urlData.publicUrl, lat: selectedCoords.lat, lng: selectedCoords.lng };
@@ -235,13 +238,15 @@
             await supabaseClient.from('plants').insert([insertData]);
             await loadPlants();
             closeForm();
-            alert("保存しました！");
-        } catch (err) {
-            alert("エラー: " + err.message);
-        } finally {
-            btn.disabled = false; btn.innerText = "保存する";
-        }
+        } catch (err) { alert(err.message); } finally { btn.disabled = false; btn.innerText = "保存する"; }
     }
+
+    function closeForm() { 
+        document.getElementById('form-container').style.display = 'none'; 
+        document.getElementById('p-file').value = "";
+        document.getElementById('p-name').value = "";
+    }
+
     loadPlants();
 </script>
 </body>
